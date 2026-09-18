@@ -1,0 +1,12 @@
+{
+  "order_id": "ORD-DEMO-01",
+  "picker_id": "PICKER-07",
+  "customer_ref": "Kotha Ravi, Flat 402",
+  "items": [
+    {"sku_id": "SKU_RICE_SONA_5KG", "qty": 1},
+    {"sku_id": "SKU_MILK_AMUL_500", "qty": 2},
+    {"sku_id": "SKU_CHIPS_LAYS", "qty": 3},
+    {"sku_id": "SKU_OIL_SUN_1L", "qty": 1},
+    {"sku_id": "SKU_CURD_400", "qty": 1}
+  ]
+}

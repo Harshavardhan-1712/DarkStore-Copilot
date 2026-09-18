@@ -1,0 +1,128 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: DarkStore Copilot — picking API, inventory truth store, audit trail.
+
+Parameters:
+  BedrockTextModel:
+    Type: String
+    Description: Bedrock model or inference-profile ID for intent parsing (region-specific).
+  BedrockVisionModel:
+    Type: String
+    Description: Bedrock multimodal model or inference-profile ID for bag verification.
+  CorsOrigin:
+    Type: String
+    Default: "*"
+    Description: Origin allowed to call the API. Set to the PWA origin before any real use.
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Timeout: 25
+    MemorySize: 512
+    Architectures: [arm64]
+
+Resources:
+  InventoryTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-inventory"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: sku_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: sku_id
+          KeyType: HASH
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+  OrdersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-orders"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: order_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: order_id
+          KeyType: HASH
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+  AuditTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-audit"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: audit_id
+          AttributeType: S
+        - AttributeName: order_id
+          AttributeType: S
+        - AttributeName: ts
+          AttributeType: N
+      KeySchema:
+        - AttributeName: audit_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: by-order
+          KeySchema:
+            - AttributeName: order_id
+              KeyType: HASH
+            - AttributeName: ts
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      BillingMode: PAY_PER_REQUEST
+
+  PickingApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: prod
+      CorsConfiguration:
+        AllowOrigins: [!Ref CorsOrigin]
+        AllowHeaders: [content-type, authorization]
+        AllowMethods: [GET, POST, OPTIONS]
+
+  PickingFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/app
+      Handler: handler.lambda_handler
+      Environment:
+        Variables:
+          INVENTORY_TABLE: !Ref InventoryTable
+          ORDERS_TABLE: !Ref OrdersTable
+          AUDIT_TABLE: !Ref AuditTable
+          BEDROCK_TEXT_MODEL: !Ref BedrockTextModel
+          BEDROCK_VISION_MODEL: !Ref BedrockVisionModel
+          CORS_ORIGIN: !Ref CorsOrigin
+      Policies:
+        - DynamoDBCrudPolicy: {TableName: !Ref InventoryTable}
+        - DynamoDBCrudPolicy: {TableName: !Ref OrdersTable}
+        - DynamoDBCrudPolicy: {TableName: !Ref AuditTable}
+        - Statement:
+            Effect: Allow
+            Action: [bedrock:InvokeModel]
+            Resource: "*"
+        - Statement:
+            Effect: Allow
+            Action: [polly:SynthesizeSpeech]
+            Resource: "*"
+      Events:
+        Api:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PickingApi
+            Path: /{proxy+}
+            Method: ANY
+
+Outputs:
+  ApiBaseUrl:
+    Description: Set this as VITE_API_BASE in the PWA.
+    Value: !Sub "https://${PickingApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
+  InventoryTableName:
+    Value: !Ref InventoryTable
+  OrdersTableName:
+    Value: !Ref OrdersTable
