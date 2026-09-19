@@ -3,6 +3,10 @@ Transform: AWS::Serverless-2016-10-31
 Description: DarkStore Copilot — picking API, inventory truth store, audit trail.
 
 Parameters:
+  InventoryTableName:
+    Type: String
+    Default: darkstore-copilot-inventory
+    Description: Existing DynamoDB inventory table.
   BedrockTextModel:
     Type: String
     Description: Bedrock model or inference-profile ID for intent parsing (region-specific).
@@ -22,19 +26,6 @@ Globals:
     Architectures: [arm64]
 
 Resources:
-  InventoryTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      TableName: !Sub "${AWS::StackName}-inventory"
-      BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - AttributeName: sku_id
-          AttributeType: S
-      KeySchema:
-        - AttributeName: sku_id
-          KeyType: HASH
-      PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: true
 
   OrdersTable:
     Type: AWS::DynamoDB::Table
@@ -90,14 +81,14 @@ Resources:
       Handler: handler.lambda_handler
       Environment:
         Variables:
-          INVENTORY_TABLE: !Ref InventoryTable
-          ORDERS_TABLE: !Ref OrdersTable
-          AUDIT_TABLE: !Ref AuditTable
-          BEDROCK_TEXT_MODEL: !Ref BedrockTextModel
-          BEDROCK_VISION_MODEL: !Ref BedrockVisionModel
-          CORS_ORIGIN: !Ref CorsOrigin
+                    INVENTORY_TABLE: !Ref InventoryTableName
+                    ORDERS_TABLE: !Ref OrdersTable
+                    AUDIT_TABLE: !Ref AuditTable
+                    BEDROCK_TEXT_MODEL: !Ref BedrockTextModel
+                    BEDROCK_VISION_MODEL: !Ref BedrockVisionModel
+                    CORS_ORIGIN: !Ref CorsOrigin
       Policies:
-        - DynamoDBCrudPolicy: {TableName: !Ref InventoryTable}
+        - DynamoDBCrudPolicy: {TableName: !Ref InventoryTableName}
         - DynamoDBCrudPolicy: {TableName: !Ref OrdersTable}
         - DynamoDBCrudPolicy: {TableName: !Ref AuditTable}
         - Statement:
@@ -120,7 +111,5 @@ Outputs:
   ApiBaseUrl:
     Description: Set this as VITE_API_BASE in the PWA.
     Value: !Sub "https://${PickingApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
-  InventoryTableName:
-    Value: !Ref InventoryTable
   OrdersTableName:
     Value: !Ref OrdersTable

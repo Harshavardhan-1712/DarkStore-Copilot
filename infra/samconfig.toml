@@ -4,11 +4,10 @@ version = 0.1
 stack_name = "darkstore-copilot"
 resolve_s3 = true
 s3_prefix = "darkstore-copilot"
-region = "ap-south-1"
 confirm_changeset = true
 capabilities = "CAPABILITY_IAM"
 disable_rollback = true
-parameter_overrides = "BedrockTextModel=\"amazon.nova-2-lite-v1:0\" BedrockVisionModel=\"amazon.nova-2-lite-v1:0\" CorsOrigin=\"*\""
+parameter_overrides = "InventoryTableName=\"darkstore-copilot-inventory\" BedrockTextModel=\"amazon.nova-2-lite-v1:0\" BedrockVisionModel=\"amazon.nova-2-lite-v1:0\" CorsOrigin=\"*\""
 image_repositories = []
 
 [default.global.parameters]
