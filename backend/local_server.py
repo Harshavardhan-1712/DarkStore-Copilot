@@ -146,9 +146,9 @@ for name, fn in [
 # reaches here is the ambiguous tail Bedrock would normally handle. This stand-in applies one
 # extra layer of loose matching and otherwise declines, which is exactly what a real model
 # should do when it is unsure: FLAG_EXCEPTION rather than a guess.
-_LOOSE_TAKEN = re.compile(r"(gone|not\s+here\s+anymore|picked\s+by|took\s+the|missing\s+from\s+my)", re.I)
-_LOOSE_MISSING = re.compile(r"(empty|finish|over|nothing|can.?t\s+find|cannot\s+find|dorakatledu)", re.I)
-_LOOSE_CONFIRM = re.compile(r"(bag\s*lo|in\s+my\s+hand|added|put\s+it\s+in|scanned)", re.I)
+_LOOSE_TAKEN = re.compile(r"\b(gone|not\s+here\s+anymore|picked\s+by|took\s+the|missing\s+from\s+my)\b", re.I)
+_LOOSE_MISSING = re.compile(r"\b(empty|finish(ed)?|over|nothing|can.?t\s+find|cannot\s+find|dorakatledu)\b", re.I)
+_LOOSE_CONFIRM = re.compile(r"\b(bag\s*lo|in\s+my\s+hand|added|put\s+it\s+in|scanned)\b", re.I)
 
 
 def _fake_intent(utterance, line, subs, lang_hint="te"):

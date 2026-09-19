@@ -198,11 +198,20 @@ def test_telugu_fast_path_confirms_without_calling_the_model():
     assert res["intent"]["spoken_response_telugu"]
 
 
-def test_hindi_fast_path_reports_unavailability_and_proposes_a_swap():
+def test_hindi_fast_path_reports_unavailability_without_auto_substitution():
     new_order([{"sku_id": MILK, "qty": 1}])
-    res = handler.voice_intent({"utterance": "nahi hai", "lang": "hi"}, "ORD-T1")
-    assert res["executed"] == "SUBSTITUTE_ITEM"
-    assert res["order"]["items"][0]["sku_id"] == "SKU_MILK_NANDINI_500"
+
+    res = handler.voice_intent(
+        {"utterance": "nahi hai", "lang": "hi"},
+        "ORD-T1",
+    )
+
+    assert res["executed"] == "FLAG_EXCEPTION"
+    assert res["order"]["items"][0]["state"] == sm.EXCEPTION
+
+    eligible = {c["sku_id"] for c in res["eligible_substitutes"]}
+    assert "SKU_MILK_NANDINI_500" in eligible
+
     assert res["intent"]["spoken_response_hindi"]
 
 

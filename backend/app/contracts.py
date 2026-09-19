@@ -57,7 +57,8 @@ def validate_intent(payload, allowed_skus):
     if missing:
         raise GuardrailRejection("Intent is missing required fields.", {"missing": missing})
 
-    unexpected = [k for k in payload if k not in REQUIRED_FIELDS]
+    allowed_fields = set(REQUIRED_FIELDS) | {"confidence"}
+    unexpected = [k for k in payload if k not in allowed_fields]
     if unexpected:
         raise GuardrailRejection("Intent contained unexpected fields.", {"unexpected": unexpected})
 
@@ -85,6 +86,13 @@ def validate_intent(payload, allowed_skus):
             raise GuardrailRejection("%s must be non-empty text." % field)
         spoken[lang] = value.strip()[:MAX_SPOKEN_CHARS]
 
+    try:
+        confidence = float(payload.get("confidence", 0.5))
+    except (TypeError, ValueError):
+        raise GuardrailRejection("confidence must be a number.")
+    if not 0.0 <= confidence <= 1.0:
+        raise GuardrailRejection("confidence must be between 0 and 1.")
+
     reason = payload["reason"]
     if not isinstance(reason, str) or not reason.strip():
         raise GuardrailRejection("reason must be non-empty text.")
@@ -96,6 +104,7 @@ def validate_intent(payload, allowed_skus):
         "spoken_response_hindi": spoken["hi"],
         "spoken_response_english": spoken["en"],
         "reason": reason.strip()[:MAX_SPOKEN_CHARS],
+        "confidence": round(confidence, 3),
     }
 
 
@@ -113,6 +122,7 @@ def manual_fallback(current_line, note):
         "spoken_response_hindi": "\u0938\u092e\u091d \u0928\u0939\u0940\u0902 \u0906\u092f\u093e\u0964 \u0936\u0947\u0932\u094d\u092b \u092a\u0930 \u0926\u0947\u0916\u0915\u0930 \u0939\u093e\u0925 \u0938\u0947 \u091a\u0941\u0928\u0947\u0902\u0964",
         "spoken_response_english": "I did not understand. Please check the shelf and choose the item manually.",
         "reason": "Guardrail fallback for %s: %s" % (name, note),
+        "confidence": 0.0,
         "fallback": True,
     }
 

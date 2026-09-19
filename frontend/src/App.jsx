@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, PICKER_ID, newActionId } from "./api.js";
-import { speak } from "./hooks/useVoice.js";
+import { registerAudio, speak, speechEpoch, stopSpeaking } from "./hooks/useVoice.js";
 import { useVoiceMachine } from "./hooks/useVoiceMachine.js";
 import { getQueuedActions, queueAction, removeAction } from "./offlineQueue.js";
 import ProgressRail from "./components/ProgressRail.jsx";
@@ -276,17 +276,32 @@ export default function App() {
       }
     );
 
+  // The same few replies ("Picked. Move to the next item.") repeat all shift, so Polly audio is
+  // kept per language+text: the repeat plays instantly instead of waiting on a network round trip.
+  const ttsCache = useRef(new Map());
+
   const playResponse = async (text) => {
     if (!text) return false;
+    stopSpeaking(); // one voice at a time: a new reply cuts off the previous one
+    const mine = speechEpoch();
     // Polly is the cloud path for Hindi and English; Telugu falls back to the browser because
     // Polly has no Telugu voice. If speech fails, never block picking.
     if (lang !== "te") {
       try {
-        const audio = await api.speech(text, lang);
+        const key = `${lang}|${text}`;
+        let audio = ttsCache.current.get(key);
+        if (!audio) {
+          audio = await api.speech(text, lang);
+          if (audio?.supported && audio.audio_base64) {
+            if (ttsCache.current.size >= 30) ttsCache.current.delete(ttsCache.current.keys().next().value);
+            ttsCache.current.set(key, audio);
+          }
+        }
+        if (speechEpoch() !== mine) return true; // the mic was tapped (or a newer reply began) while this loaded
         if (audio?.supported && audio.audio_base64) {
           const bytes = Uint8Array.from(atob(audio.audio_base64), (c) => c.charCodeAt(0));
           const url = URL.createObjectURL(new Blob([bytes], { type: audio.audio_format || "audio/mpeg" }));
-          const player = new Audio(url);
+          const player = registerAudio(new Audio(url));
           player.onended = () => URL.revokeObjectURL(url);
           await player.play();
           return true;
@@ -321,7 +336,10 @@ export default function App() {
             : res.intent?.spoken_response_telugu;
 
         machine.finish(!!spoken);
-        playResponse(spoken);
+        // If this device has no voice for the language, show the reply instead of going silent.
+        playResponse(spoken).then((ok) => {
+          if (spoken && !ok) flash(spoken);
+        });
 
         if (res.executed === "ITEM_ALREADY_TAKEN") {
           setContested({

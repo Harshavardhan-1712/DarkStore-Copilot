@@ -24,10 +24,14 @@ export default function VoicePanel({
   onUtterance,
   onRetry,
 }) {
-  const { listening, supported, start, stop } = useVoice(
+  const { listening, supported, start, stop, cancel } = useVoice(
     lang,
     (text) => onUtterance(text),
-    (message) => machine.fail(message)
+    (message, heard) => {
+      // Something was heard but not trusted: keep it so "Send ... again" can submit it as is.
+      if (heard) machine.setTranscript(heard);
+      machine.fail(message);
+    }
   );
   const copy = STATE_COPY[machine.state] || STATE_COPY.READY;
   const active = machine.state !== "READY" && machine.state !== "ERROR";
@@ -35,8 +39,10 @@ export default function VoicePanel({
 
   const toggle = () => {
     if (listening) {
+      // "Done talking": the browser now finishes recognising and the result (or a
+      // "didn't catch that") arrives on its own. Resetting to READY here used to hide a
+      // request that was still about to be sent.
       stop();
-      machine.to("READY");
     } else {
       machine.reset();
       machine.to("LISTENING");
@@ -50,7 +56,17 @@ export default function VoicePanel({
         <h3>Voice copilot</h3>
         <div className="langs">
           {Object.entries(LABELS).map(([code, label]) => (
-            <button key={code} aria-pressed={lang === code} onClick={() => setLang(code)}>
+            <button
+              key={code}
+              aria-pressed={lang === code}
+              onClick={() => {
+                if (code !== lang && listening) {
+                  cancel(); // the capture belongs to the old language; drop it rather than send it
+                  machine.reset();
+                }
+                setLang(code);
+              }}
+            >
               {label}
             </button>
           ))}
@@ -97,10 +113,10 @@ export default function VoicePanel({
         data-listening={listening}
         disabled={busy || !supported}
         onClick={toggle}
-        aria-label={listening ? "Stop listening" : "Start voice input"}
+        aria-label={listening ? "Finish and send" : "Start voice input"}
       >
         <span>
-          {listening ? "Listening — tap to stop" : supported ? "🎙 Tap to speak" : "Mic unavailable"}
+          {listening ? "Listening — tap when done" : supported ? "🎙 Tap to speak" : "Mic unavailable"}
           <small>
             {supported
               ? `Speak ${LABELS[lang]}. Every action also has a button.`
