@@ -623,7 +623,15 @@ def dashboard(body):
         status_counts[o.get("status")] = status_counts.get(o.get("status"), 0) + 1
 
     today = time.strftime("%Y-%m-%d", time.localtime())
-    today_orders = [o for o in orders if time.strftime("%Y-%m-%d", time.localtime(o.get("created_at", 0) / 1000)) == today]
+    today_orders = [
+    o
+    for o in orders
+    if time.strftime(
+        "%Y-%m-%d",
+        time.localtime(float(o.get("created_at", 0)) / 1000),
+    )
+    == today
+]
     oos = [a for a in audits if a.get("event") == "ITEM_OOS"]
     concurrent = [a for a in audits if a.get("event") == "ITEM_CONCURRENT_PICK"]
     concurrent_blocked = [a for a in audits if a.get("event") == "CONCURRENT_PICK_DUPLICATE_BLOCKED"]
@@ -653,7 +661,7 @@ def dashboard(body):
         if i.get("state") not in sm.TERMINAL_ITEM_STATES
     )
     active_pickers = len({o.get("picker_id") for o in active if o.get("picker_id")})
-    dispatched_today = sum(1 for a in audits if a.get("event") == "DISPATCHED" and time.strftime("%Y-%m-%d", time.localtime(a.get("ts", 0) / 1000)) == today)
+    dispatched_today = sum(1 for a in audits if a.get("event") == "DISPATCHED" and time.strftime("%Y-%m-%d", time.localtime(float(a.get("ts", 0)) / 1000)) == today)
     oos_resolved = len({a.get("order_id") for a in substitutions})
     oos_orders = len({a.get("order_id") for a in oos})
     oos_resolution_rate = round(oos_resolved / oos_orders * 100, 1) if oos_orders else None
@@ -1128,3 +1136,5 @@ def read_inventory(body, sku_id):
 @route("GET", "/health")
 def health(body):
     return {"service": "darkstore-copilot", "ts": _now_ms()}
+
+
