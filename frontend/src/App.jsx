@@ -18,6 +18,13 @@ import DemoControlCenter from "./components/DemoControlCenter.jsx";
 import DemoPanel from "./components/DemoPanel.jsx";
 import Dashboard from "./components/Dashboard.jsx";
 import Analysis from "./components/Analysis.jsx";
+import CustomerMessage from "./components/CustomerMessage.jsx";
+import BatchPick from "./components/BatchPick.jsx";
+import PhantomQueue from "./components/PhantomQueue.jsx";
+import { allDoneLine, describeItem } from "./hooks/readout.js";
+import { answerQuery, classifyQuery } from "./hooks/voiceQueries.js";
+import { buildSubstitutionMessage, logCustomerMessage } from "./hooks/customerMessage.js";
+import { extras } from "./hooks/extrasApi.js";
 
 const MAIN_DEMO_ORDER = "ORD-DEMO-101";
 
@@ -32,6 +39,18 @@ const MAIN_DEMO_ORDER = "ORD-DEMO-101";
  */
 const OFFLINE_SAFE = new Set(["pick", "exception"]);
 
+const CLOSED_LINE = ["PICKED", "SUBSTITUTED", "REMOVED"];
+
+/**
+ * A voice reply that means "the shelf is empty", as opposed to "damaged" (which the model may
+ * also map to a substitution). Only genuine stock-outs become inventory-audit signals.
+ */
+function isStockOutReport(res) {
+  const asked =
+    res.intent?.action === "SUBSTITUTE_ITEM" || res.interpretation?.raw_action === "SUBSTITUTE_ITEM";
+  return asked && !/damag|broken|expire|leak|wrong/i.test(res.intent?.reason || "");
+}
+
 export default function App() {
   const [view, setView] = useState(() => {
     try {
@@ -40,7 +59,7 @@ export default function App() {
       return null;
     }
   });
-  const [screen, setScreen] = useState("home"); // home | orders | picker | ops | analysis
+  const [screen, setScreen] = useState("home"); // home | orders | picker | ops | analysis | batch | phantom
   const [lang, setLang] = useState("te");
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState(null);
@@ -58,6 +77,18 @@ export default function App() {
   const [online, setOnline] = useState(navigator.onLine);
   const [syncing, setSyncing] = useState(false);
   const [pendingActions, setPendingActions] = useState(getQueuedActions());
+  // Reading each item aloud is on by default. The mic is NEVER opened automatically: after the app
+  // speaks, replyPrompt only makes the mic button pulse, and the picker taps it. Auto-listening
+  // would hear the app's own voice and aisle chatter, which is where false triggers came from.
+  const [readAloud, setReadAloud] = useState(() => {
+    try {
+      return localStorage.getItem("darkstore-readout") !== "off";
+    } catch (_) {
+      return true;
+    }
+  });
+  const [replyPrompt, setReplyPrompt] = useState(false);
+  const [customerMsg, setCustomerMsg] = useState(null);
 
   const machine = useVoiceMachine();
 
@@ -189,9 +220,10 @@ export default function App() {
   // --- order loading ----------------------------------------------------
   const openOrder = (id) =>
     run(() => api.getOrder(id), {
-      onResult: () => {
+      onResult: (res) => {
         setScreen("picker");
         resetPanels();
+        announceOpened(res);
       },
     });
 
@@ -203,6 +235,7 @@ export default function App() {
     if (res) {
       setScreen("picker");
       resetPanels();
+      announceOpened(res);
     }
   };
 
@@ -216,7 +249,9 @@ export default function App() {
       queueOffline("pick", { order_id: orderId, index, sku_id: item.sku_id });
       return;
     }
-    return run(() => api.pick(orderId, index, item.sku_id, newActionId("pick")));
+    return run(() => api.pick(orderId, index, item.sku_id, newActionId("pick")), {
+      onResult: (res) => announce(res),
+    });
   };
 
   const flagMissing = () => {
@@ -232,12 +267,14 @@ export default function App() {
     return run(
       () => api.exception(orderId, index, "OOS", "Picker reported the shelf empty", newActionId("oos")),
       {
-        onResult: (res) =>
+        onResult: (res) => {
           setSubs({
             original: item,
             eligible: res.eligible_substitutes || [],
             rejected: res.rejected_substitutes || [],
-          }),
+          });
+          reportShelfEmpty("button");
+        },
       }
     );
   };
@@ -253,6 +290,8 @@ export default function App() {
         setContested(null);
         setLastDecision({ chain: res.policy_chain, interpretation: null });
         flash("Substitute applied and the bill updated.");
+        notifyCustomer(res);
+        announce(res);
       },
     });
   };
@@ -268,10 +307,11 @@ export default function App() {
           newActionId("skip")
         ),
       {
-        onResult: () => {
+        onResult: (res) => {
           setSubs(null);
           setContested(null);
           flash("Line flagged for manual resolution.");
+          announce(res);
         },
       }
     );
@@ -311,8 +351,101 @@ export default function App() {
     return speak(text, lang);
   };
 
+  // --- read-out, queries, audit signals, customer message ------------------------------------
+  const toggleReadAloud = () => {
+    const next = !readAloud;
+    setReadAloud(next);
+    try {
+      localStorage.setItem("darkstore-readout", next ? "on" : "off");
+    } catch (_) {}
+    if (!next) {
+      stopSpeaking();
+      setReplyPrompt(false);
+    }
+  };
+
+  const readAgain = () => {
+    if (!item) return;
+    playResponse(describeItem(item, lang, "again"));
+    setReplyPrompt(true);
+  };
+
+  /** What to say about the line the store moved to, or "" when it did not move / read-out is off. */
+  const nextReadout = (res) => {
+    if (!readAloud || !res?.order) return "";
+    const moved = res.current_index !== index || res.current_item?.sku_id !== item?.sku_id;
+    if (!moved) return "";
+    if (res.current_item) return describeItem(res.current_item, lang, "next");
+    return ["PICKING", "BAG_VERIFICATION"].includes(res.order.status) ? allDoneLine(lang) : "";
+  };
+
+  /** Button flows: read out the next item, then wait for a tap on the mic. */
+  const announce = (res) => {
+    const text = nextReadout(res);
+    if (!text) return;
+    playResponse(text);
+    if (res.current_item) setReplyPrompt(true);
+  };
+
+  const announceOpened = (res) => {
+    if (!readAloud || !res?.current_item) return;
+    const started = (res.order?.items || []).some((i) => CLOSED_LINE.includes(i.state));
+    playResponse(describeItem(res.current_item, lang, started ? "again" : "first"));
+    setReplyPrompt(true);
+  };
+
+  /** Read-only voice question: answered from the order the store already returned. */
+  const answerQuestion = (utterance, question) => {
+    const text = answerQuery(question, { lang, item, index, items: view?.order?.items || [] });
+    setLastDecision(null); // the decision trail belongs to the last action, not to a question
+    machine.heard(utterance);
+    machine.finish(true);
+    playResponse(text).then((ok) => {
+      if (!ok) flash(text);
+    });
+    setReplyPrompt(true);
+  };
+
+  /**
+   * The picker found the shelf empty. Logged as an inventory-audit signal (system stock vs shelf).
+   * Fire and forget: reporting never blocks picking and changes no stock.
+   */
+  const reportShelfEmpty = (source, reason = "") => {
+    if (!item?.sku_id || !orderId) return;
+    extras
+      .reportOutOfStock({ sku_id: item.sku_id, lines: [{ order_id: orderId, index }], source, picker_id: PICKER_ID, reason })
+      .then((out) => {
+        if (out?.finding === "PHANTOM_STOCK_SUSPECT" && !out.deduped) {
+          flash(`Inventory audit: the system shows ${out.system_qty} of ${out.name}. Logged for a recount.`);
+        }
+      })
+      .catch(() => {});
+  };
+
+  /** After the store accepts a swap (policy has checked category, stock, price) tell the customer why. */
+  const notifyCustomer = (res) => {
+    const replacement = res.order?.items?.[index];
+    if (replacement?.state !== "SUBSTITUTED") return;
+    const msg = buildSubstitutionMessage({
+      order: res.order,
+      original: item,
+      replacement,
+      previousTotal: view?.order?.invoice_total,
+    });
+    if (!msg) return;
+    logCustomerMessage(msg);
+    setCustomerMsg(msg);
+  };
+
   const handleUtterance = (utterance, simulated) => {
     if (!utterance) return;
+
+    // Questions ("where is it?", "how many?", "what's next?") change nothing, so they are answered
+    // locally and work offline. Anything that looks like a command is never treated as a question.
+    const question = simulated ? null : classifyQuery(utterance);
+    if (question) return answerQuestion(utterance, question);
+
+    setReplyPrompt(false);
     if (!online) {
       machine.fail("Voice decisions need a live store connection. Use the buttons above.");
       return;
@@ -335,11 +468,16 @@ export default function App() {
             ? res.intent?.spoken_response_english || res.intent?.spoken_response_hindi
             : res.intent?.spoken_response_telugu;
 
-        machine.finish(!!spoken);
+        // After a pick the reply and the next item are one utterance, so the read-out can never
+        // cut off the confirmation (or the other way round).
+        const tail = nextReadout(res);
+        const full = [spoken, tail].filter(Boolean).join(" ");
+        machine.finish(!!full);
         // If this device has no voice for the language, show the reply instead of going silent.
-        playResponse(spoken).then((ok) => {
+        playResponse(full).then((ok) => {
           if (spoken && !ok) flash(spoken);
         });
+        if (tail && res.current_item) setReplyPrompt(true);
 
         if (res.executed === "ITEM_ALREADY_TAKEN") {
           setContested({
@@ -355,6 +493,7 @@ export default function App() {
           return;
         }
         if (res.executed === "AWAITING_PICKER_CHOICE" || res.executed === "FLAG_EXCEPTION") {
+          if (isStockOutReport(res)) reportShelfEmpty("voice", res.intent?.reason);
           setSubs({
             original: item,
             eligible: res.eligible_substitutes || [],
@@ -447,6 +586,33 @@ export default function App() {
   );
 
   // --- render -----------------------------------------------------------
+  if (screen === "batch") {
+    return (
+      <>
+        <BatchPick
+          onBack={() => setScreen(view ? "picker" : "home")}
+          onOpenOrder={(id) => openOrder(id)}
+          flash={flash}
+          lang={lang}
+          online={online}
+          speak={readAloud ? playResponse : null}
+        />
+        {demoCentre}
+        {toastEl}
+      </>
+    );
+  }
+
+  if (screen === "phantom") {
+    return (
+      <>
+        <PhantomQueue onBack={() => setScreen(view ? "picker" : "home")} />
+        {demoCentre}
+        {toastEl}
+      </>
+    );
+  }
+
   if (screen === "ops") {
     return (
       <>
@@ -521,6 +687,12 @@ export default function App() {
           <button className="btn plain" onClick={() => setScreen("analysis")}>
             Analysis workspace
           </button>
+          <button className="btn plain" onClick={() => setScreen("batch")}>
+            Batch pick: several orders, one walk
+          </button>
+          <button className="btn plain" onClick={() => setScreen("phantom")}>
+            Inventory audit queue
+          </button>
           <div className="home-foot">
             <span>Picker: {PICKER_ID}</span>
             <span>{online ? "● Online" : "○ Offline · queued actions enabled"}</span>
@@ -562,6 +734,7 @@ export default function App() {
         {pendingActions.length > 0 && <b>{pendingActions.length} queued</b>}
       </div>
       {children}
+      {customerMsg && <CustomerMessage msg={customerMsg} onClose={() => setCustomerMsg(null)} />}
       {demoCentre}
       {toastEl}
     </div>
@@ -646,6 +819,11 @@ export default function App() {
           lastDecision={lastDecision}
           onUtterance={(text) => handleUtterance(text, null)}
           onRetry={() => handleUtterance(machine.transcript, null)}
+          readAloud={readAloud}
+          onToggleReadAloud={toggleReadAloud}
+          onReadAgain={readAgain}
+          replyPrompt={replyPrompt}
+          onListenStart={() => setReplyPrompt(false)}
         />
 
         <div className="picker-foot">

@@ -21,6 +21,8 @@ import bedrock  # noqa: E402
 import voice_lexicon  # noqa: E402
 import dynamo  # noqa: E402
 import handler  # noqa: E402
+import extras  # noqa: E402
+import phantom_stock  # noqa: E402
 from errors import Conflict, NotFound  # noqa: E402
 from seed_data import CATALOG  # noqa: E402
 
@@ -81,6 +83,7 @@ def _reset_store():
     INV.update(_fresh_inventory())
     ORDERS.clear()
     del AUDIT[:]
+    phantom_stock.clear()   # demo reset also empties the phantom-stock signals (in-memory store)
     _verify.calls = 0
 
 
@@ -209,7 +212,8 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length") or 0)
         body = self.rfile.read(length).decode() if length else ""
         event = {"httpMethod": self.command, "path": self.path.split("?")[0], "body": body or None}
-        result = handler.lambda_handler(event, None)
+        # extras answers /phantom-stock and /batches itself and passes everything else to handler.
+        result = extras.lambda_handler(event, None)
         payload = result["body"].encode()
         self.send_response(result["statusCode"])
         for k, v in result["headers"].items():

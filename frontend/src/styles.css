@@ -662,3 +662,300 @@ button:focus-visible, [tabindex]:focus-visible { outline: 3px solid var(--rack);
   .exception-row { grid-template-columns: 20px 1fr; }
   .ex-kind { display: none; }
 }
+
+/* Styles for read-aloud, customer message, batch picking and the audit queue.
+   Colours use translucent neutrals and inherit text colour, so they sit on any theme. */
+
+/* --- voice panel additions ------------------------------------------------------------------ */
+.voice-tools {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 8px 0 4px;
+}
+.voice-tool {
+  font: inherit;
+  font-size: 0.82rem;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(127, 127, 127, 0.4);
+  background: rgba(127, 127, 127, 0.1);
+  color: inherit;
+  cursor: pointer;
+}
+.voice-tool[aria-pressed="true"] {
+  border-color: rgba(45, 212, 160, 0.9);
+  background: rgba(45, 212, 160, 0.16);
+}
+.voice-tool:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* The app has just spoken: the mic waits for a tap. It never opens by itself. */
+.mic[data-prompt="true"] {
+  animation: x-mic-pulse 1.6s ease-out infinite;
+}
+@keyframes x-mic-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(45, 212, 160, 0.55); }
+  70% { box-shadow: 0 0 0 14px rgba(45, 212, 160, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(45, 212, 160, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mic[data-prompt="true"] {
+    animation: none;
+    outline: 2px solid rgba(45, 212, 160, 0.85);
+  }
+}
+
+/* --- customer message ----------------------------------------------------------------------- */
+.x-msg {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: 84px;
+  max-width: 460px;
+  margin: 0 auto;
+  z-index: 60;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(127, 127, 127, 0.4);
+  background: Canvas;
+  color: CanvasText;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+}
+.x-msg header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+}
+.x-msg header span {
+  opacity: 0.7;
+  flex: 1;
+}
+.x-msg header button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 1rem;
+  cursor: pointer;
+}
+.x-msg-bubble {
+  margin: 10px 0 8px;
+  padding: 10px 12px;
+  border-radius: 12px 12px 12px 2px;
+  background: rgba(45, 212, 160, 0.16);
+  white-space: pre-line;
+  font-size: 0.92rem;
+  line-height: 1.4;
+}
+.x-msg small {
+  opacity: 0.65;
+}
+
+/* --- batch + audit pages -------------------------------------------------------------------- */
+.x-page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.x-lede,
+.x-note,
+.x-empty {
+  margin: 0;
+  opacity: 0.8;
+  font-size: 0.92rem;
+}
+.x-error {
+  margin: 0;
+  color: #e5484d;
+}
+.x-warn {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(245, 158, 11, 0.16);
+  font-size: 0.88rem;
+}
+
+.x-totes {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.x-tote {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(127, 127, 127, 0.4);
+  font-size: 0.8rem;
+}
+.x-tote b {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(45, 212, 160, 0.3);
+}
+.x-tote small {
+  opacity: 0.65;
+}
+
+.x-stop {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(127, 127, 127, 0.4);
+  background: rgba(127, 127, 127, 0.08);
+}
+.x-stop h2 {
+  margin: 0;
+  font-size: 1.35rem;
+}
+.x-loc {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.x-total {
+  font-size: 2.2rem;
+  font-weight: 800;
+  line-height: 1;
+}
+.x-alloc {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.x-alloc li {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(127, 127, 127, 0.12);
+}
+.x-alloc span {
+  flex: 1;
+  opacity: 0.75;
+  font-size: 0.85rem;
+}
+.x-alloc em {
+  font-style: normal;
+  font-weight: 700;
+}
+.x-row {
+  display: flex;
+  gap: 8px;
+}
+.x-row .btn {
+  flex: 1;
+}
+
+.x-deferred,
+.x-later {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.x-deferred h3,
+.x-later h3 {
+  margin: 0;
+  font-size: 0.85rem;
+  opacity: 0.75;
+  font-weight: 600;
+}
+.x-later ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.x-later li {
+  display: flex;
+  gap: 10px;
+  font-size: 0.88rem;
+}
+.x-later li span {
+  opacity: 0.65;
+  min-width: 96px;
+}
+.x-later li b {
+  flex: 1;
+  font-weight: 500;
+}
+.x-later li em {
+  font-style: normal;
+  opacity: 0.8;
+}
+
+.x-stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+.x-stats div {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(127, 127, 127, 0.12);
+}
+.x-stats b {
+  font-size: 1.35rem;
+}
+.x-stats b small {
+  font-size: 0.8rem;
+  opacity: 0.6;
+}
+.x-stats span {
+  font-size: 0.78rem;
+  opacity: 0.7;
+}
+
+.x-queue {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.x-queue li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(127, 127, 127, 0.35);
+}
+.x-queue li[data-status="RECOUNT_NOW"] {
+  border-color: rgba(229, 72, 77, 0.7);
+  background: rgba(229, 72, 77, 0.08);
+}
+.x-queue small {
+  display: block;
+  opacity: 0.65;
+}
+.x-queue em {
+  font-style: normal;
+  font-weight: 700;
+  font-size: 0.8rem;
+  align-self: start;
+}
+.x-queue-nums {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 0.82rem;
+  opacity: 0.8;
+}

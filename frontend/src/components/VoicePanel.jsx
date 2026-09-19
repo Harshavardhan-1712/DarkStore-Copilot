@@ -5,9 +5,9 @@ import PolicyChain from "./PolicyChain.jsx";
 const LABELS = { te: "తెలుగు", hi: "हिंदी", en: "English" };
 
 const PHRASEBOOK = {
-  te: ["teesukunnanu", "milk ledu", "evaro teesukunnaru"],
-  hi: ["mil gaya", "nahi hai", "kisi ne le liya"],
-  en: ["picked", "out of stock", "someone already took this"],
+  te: ["teesukunnanu", "milk ledu", "evaro teesukunnaru", "ekkada"],
+  hi: ["mil gaya", "nahi hai", "kisi ne le liya", "kahan hai"],
+  en: ["picked", "out of stock", "someone already took this", "where is it"],
 };
 
 /**
@@ -23,6 +23,11 @@ export default function VoicePanel({
   lastDecision,
   onUtterance,
   onRetry,
+  readAloud = false,
+  onToggleReadAloud,
+  onReadAgain,
+  replyPrompt = false,
+  onListenStart,
 }) {
   const { listening, supported, start, stop, cancel } = useVoice(
     lang,
@@ -46,7 +51,8 @@ export default function VoicePanel({
     } else {
       machine.reset();
       machine.to("LISTENING");
-      start();
+      onListenStart?.();
+      start(); // the ONLY place the mic opens: always a tap, never automatic
     }
   };
 
@@ -72,6 +78,21 @@ export default function VoicePanel({
           ))}
         </div>
       </div>
+
+      {(onToggleReadAloud || onReadAgain) && (
+        <div className="voice-tools">
+          {onToggleReadAloud && (
+            <button type="button" className="voice-tool" aria-pressed={readAloud} onClick={onToggleReadAloud}>
+              🔊 Read items aloud
+            </button>
+          )}
+          {onReadAgain && (
+            <button type="button" className="voice-tool" onClick={onReadAgain}>
+              ↺ Repeat
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="voice-state" data-state={machine.state}>
         <span className="voice-dot">{copy.dot}</span>
@@ -111,15 +132,24 @@ export default function VoicePanel({
         type="button"
         className="mic"
         data-listening={listening}
+        data-prompt={replyPrompt && !listening}
         disabled={busy || !supported}
         onClick={toggle}
         aria-label={listening ? "Finish and send" : "Start voice input"}
       >
         <span>
-          {listening ? "Listening — tap when done" : supported ? "🎙 Tap to speak" : "Mic unavailable"}
+          {listening
+            ? "Listening — tap when done"
+            : supported
+            ? replyPrompt
+              ? "🎙 Tap to reply"
+              : "🎙 Tap to speak"
+            : "Mic unavailable"}
           <small>
             {supported
-              ? `Speak ${LABELS[lang]}. Every action also has a button.`
+              ? replyPrompt
+                ? "The mic stays off until you tap, so aisle chatter can't trigger anything."
+                : `Speak ${LABELS[lang]}. Every action also has a button.`
               : "Browser speech is unavailable here. Use the buttons below."}
           </small>
         </span>
