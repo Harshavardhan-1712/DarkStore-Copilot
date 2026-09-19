@@ -19,7 +19,7 @@ import DemoPanel from "./components/DemoPanel.jsx";
 import Dashboard from "./components/Dashboard.jsx";
 import Analysis from "./components/Analysis.jsx";
 import CustomerMessage from "./components/CustomerMessage.jsx";
-import BatchPick from "./components/BatchPick.jsx";
+import BatchPick from "./components/Batchpick.jsx";
 import PhantomQueue from "./components/PhantomQueue.jsx";
 import { allDoneLine, describeItem } from "./hooks/readout.js";
 import { answerQuery, classifyQuery } from "./hooks/voiceQueries.js";
